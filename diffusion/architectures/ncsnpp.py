@@ -1,24 +1,12 @@
 from diffusion.layers import DDPMResnetBlock, GaussianFourierProjection, SelfAttentionBlock, UpsampleLayer, \
-        DownsampleLayer, Combine, ResnetBlockBigGANpp, conv3x3, PositionalEncoding, default_init, get_activation
+        DownsampleLayer, Combine, ResnetBlockBigGANpp, conv3x3, PositionalEncoding, default_init, get_activation, \
+        FourierFeatures
 from diffusion.architectures.register_arch import register_model
 
 import torch.nn as nn
 import functools
 import torch
 import numpy as np
-
-
-def FourierFeatures(pow, x):
-    with torch.no_grad():
-        coeff = 2.**torch.tensor(pow)*np.pi
-
-        features=[x,]
-        for i in coeff:
-            features.append( torch.sin(x*i) )
-            features.append( torch.cos(x*i) )
-
-        concatenated_features = torch.cat(features, dim=1)
-        return concatenated_features
 
 
 @register_model(name='NCSNpp')
