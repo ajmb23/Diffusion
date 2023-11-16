@@ -1,0 +1,1 @@
+from diffusion.sampling.setup import sample
