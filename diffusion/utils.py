@@ -7,6 +7,7 @@ from scipy.spatial.distance import cdist
 from scipy.stats import norm
 import torch.nn.functional
 import signal
+import pickle
 
 def load_config( config_file ):
     with open(config_file, 'r') as config_file:
@@ -96,10 +97,14 @@ def sigma_max(dataset):
     highest_distance = np.max(pairwise_distances)
     return highest_distance
 
-def sigma_max_torch( data_dic, device ):
+def sigma_max_torch( data_dic_file, device ):
+    with open(data_dic_file, 'rb') as file:
+        data_dic = pickle.load(file)
+    
     flatten_data = []
     for key in data_dic:
-        flatten_data.append( data_dic[key][1].flatten() )
+        for element in data_dic[key][1]:
+            flatten_data.append( element.flatten() )
 
     flatten_data = np.array(flatten_data)
     tensor_data = torch.tensor( flatten_data, device=device, dtype=torch.float32 )
