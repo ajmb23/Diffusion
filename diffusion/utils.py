@@ -5,6 +5,7 @@ import json
 import numpy as np
 from scipy.spatial.distance import cdist
 from scipy.stats import norm
+import torch.nn.functional
 import signal
 
 def load_config( config_file ):
@@ -88,11 +89,25 @@ def load_arch_ema(dir_path, filename, init_arch, init_ema, device):
     else:
         ValueError( f"No checkpoint found in directory {dir_path} with name {filename}" )
 
+
 def sigma_max(dataset):
     #compute larges eucledian distance in dataset
     pairwise_distances = cdist(dataset, dataset, metric='euclidean')
     highest_distance = np.max(pairwise_distances)
     return highest_distance
+
+def sigma_max_torch( data_dic, device ):
+    flatten_data = []
+    for key in data_dic:
+        flatten_data.append( data_dic[key][1].flatten() )
+
+    flatten_data = np.array(flatten_data)
+    tensor_data = torch.tensor( flatten_data, device=device, dtype=torch.float32 )
+
+    distance = torch.nn.functional.pdist(tensor_data, p=2)
+    max_distance = torch.max( distance )
+    return  max_distance.cpu().item()
+
 
 def VE_samp_prob( sigma_min, sigma_max, num_steps, dim ):
     gamma = ( sigma_max / sigma_min )**(1/num_steps)

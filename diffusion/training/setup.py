@@ -35,7 +35,8 @@ def mult_gpu_setup():
     return local_rank, rank, world_size
 
 
-def mod_ema_opt_setup( device, arch_name, arch_params, ema_rate, lr, weight_decay=0, beta1=0.9, eps=1e-8, local_rank=None):
+def mod_ema_opt_setup( device, arch_name, arch_params, ema_rate, lr, weight_decay=0, 
+                       beta1=0.9, eps=1e-8, local_rank=None):
     #Initialize architecture, ema, optimizer
     call_model = create_model( arch_name)
     init_model = call_model( **arch_params )
