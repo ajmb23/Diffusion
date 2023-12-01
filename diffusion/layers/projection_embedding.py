@@ -2,6 +2,7 @@ import torch
 from torch.func import vmap
 from torch import nn
 from numpy import pi
+import numpy as np
 
 left_matmul = vmap(torch.matmul, in_dims=(None,  0))
 
