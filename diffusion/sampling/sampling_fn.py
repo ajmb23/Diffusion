@@ -4,9 +4,11 @@ from tqdm import tqdm
 
 class samplers():
 
-  def __init__(self, score_model, ema, batch_size, dim, 
+  def __init__(self, score_model, ema, batch_size, dim:list, 
                pred_num_steps, mean, std, first_t, last_t, 
-               pert_std, drift_coeff, diffusion_coeff, device):
+               pert_std, drift_coeff, diffusion_coeff, device, 
+               num_corr_steps=None, corr_step_type=None, 
+               corr_step_size=None):
     
     self.score_model = score_model
     self.ema = ema
@@ -24,12 +26,16 @@ class samplers():
     self.diffusion_coeff = diffusion_coeff    
     self.device = device
 
+    self.num_corr_steps = num_corr_steps
+    self.corr_step_type = corr_step_type
+    self.corr_step_size = corr_step_size
+
   
   def setup(self):
 
     init_x = self.mean + self.std*torch.randn( [self.B]+self.D, device=self.device )
     time_steps = torch.linspace(self.first_t, self.last_t, self.pred_num_steps, device=self.device)
-    dt = (self.first_t-self.last_t)/self.pred_num_steps
+    dt = (self.last_t-self.first_t)/self.pred_num_steps
 
     return time_steps[1:], dt, init_x
 
@@ -41,13 +47,23 @@ class samplers():
     score = self.score_model( torch.ones([self.B], device=self.device)*time_step, x )/self.pert_std(time_step)
     
     if time_step > self.last_t:
-        x_mean = x + ( g**2 * score - f ) * dt
-        x_noisy = x_mean +  g * torch.randn_like(x) * dt**0.5
+        x_mean = x + ( f - g**2 * score ) * dt
+        x_noisy = x_mean +  g * torch.randn_like(x) * (-dt)**0.5
         return x_noisy
     
     if time_step==self.last_t:
-        x_final =  x + ( g**2 * score - f ) * dt
+        x_final =  x + ( f - g**2 * score ) * dt
         return x_final
+    
+    
+  def langevin_update(self, x, time_step, step_size, step_type=None):
+    score = self.score_model( torch.ones([self.B], device=self.device)*time_step, x )/self.pert_std(time_step)
+    if step_type=="pert_std":
+      step_size = step_size * self.pert_std( time_step )    
+
+    for i in range(self.num_corr_steps):
+      x = x + step_size*score + (2*step_size)**0.5 * torch.randn_like(x)     
+    return x    
 
 
   def sample(self, tqdm_bool):
@@ -58,7 +74,14 @@ class samplers():
         time_steps = tqdm( time_steps )
 
     with torch.no_grad(), self.ema.average_parameters():
-
-        for time_step in time_steps:
+        
+        if self.num_corr_steps is None or self.num_corr_steps==0: 
+          for time_step in time_steps:
+              x = self.EM_update( x, dt, time_step )
+          return x
+        
+        else:
+          for time_step in time_steps:
             x = self.EM_update( x, dt, time_step )
-        return x
+            x = self.langevin_update( x, time_step, step_size=self.corr_step_size, step_type=self.corr_step_type )
+          return x
