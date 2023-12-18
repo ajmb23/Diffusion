@@ -9,8 +9,8 @@ from torch.utils.data import DataLoader
 from torch_ema import ExponentialMovingAverage
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data.distributed import DistributedSampler
-from torch.optim import Adam 
 from datetime import timedelta
+from torch.optim import Adam 
 import logging
 import os
 
@@ -71,9 +71,6 @@ def dataset_setup( config ):
 def training_setup( config, local_rank=None, rank=None, world_size=None): 
     
     #Creates a file which gives infromation about the progress of training 
-    #prog_file = open( 'training.txt', 'a' )
-    #setup_logger(prog_file)
-
     logging.basicConfig( filename='training.txt', filemode='a', 
                          format='%(levelname)s - %(asctime)s - %(message)s', 
                          datefmt="%Y-%m-%d %H:%M:%S", level=logging.INFO )
@@ -120,8 +117,8 @@ def training_setup( config, local_rank=None, rank=None, world_size=None):
         state = load_checkpoint( checkpoint_dir, 'checkpoint.pth', init_state, device )
 
         logging.info( f"SDE:{config['SDE']['name']}, noise_min:{config['SDE']['noise_min']}, "
-                    f"noise_max:{config['SDE']['noise_max']}, "
-                    f"min_t:{min_t:.0e}, max_t:{max_t}" )
+                      f"noise_max:{config['SDE']['noise_max']}, "
+                      f"min_t:{min_t:.0e}, max_t:{max_t}" )
 
         dataloader = DataLoader( data_sets, batch_size=config['training']['batch_size'], 
                                  shuffle=config['training']['shuffle'], drop_last=False )
