@@ -1,8 +1,6 @@
 from diffusion.architectures import create_model, NCSNpp, DDPM, MLP, bb_MLP
 from diffusion.training.dataset import mult_datasets
-from diffusion import VE_zero, VE, VP, sub_VP, setup_logger, \
-                      load_checkpoint, load_checkpoint_ddp, \
-                      save_checkpoint, save_checkpoint_ddp
+from diffusion import VE_zero, VE, VP, sub_VP, load_checkpoint, save_checkpoint
 
 import torch 
 from torch.utils.data import DataLoader
@@ -13,7 +11,6 @@ from datetime import timedelta
 from torch.optim import Adam 
 import logging
 import os
-
 
 def mult_gpu_setup():
     assert torch.distributed.is_available()
@@ -38,7 +35,7 @@ def mult_gpu_setup():
 def mod_ema_opt_setup( device, arch_name, arch_params, ema_rate, lr, weight_decay=0, 
                        beta1=0.9, eps=1e-8, local_rank=None):
     #Initialize architecture, ema, optimizer
-    call_model = create_model( arch_name)
+    call_model = create_model( arch_name ) 
     init_model = call_model( **arch_params )
     init_model = init_model.to( device )
 
@@ -86,77 +83,67 @@ def training_setup( config, local_rank=None, rank=None, world_size=None):
         logging.info(f"World size: {world_size}, global rank: {rank}, local rank: {local_rank}")
 
     #Initialize architecture, ema, optimizer
+    learning_rate = config['optimizer']['lr'] * world_size if world_size is not None else config['optimizer']['lr']
     init_model, init_ema, init_optimizer = mod_ema_opt_setup( device=device, arch_name=config['model']['name'], 
                                                               arch_params=config['model']['params'], 
                                                               ema_rate=config['model']['ema_rate'], 
-                                                              lr=config['optimizer']['lr'], 
+                                                              lr=learning_rate, 
                                                               weight_decay=config['optimizer']['weight_decay'], 
                                                               beta1=config['optimizer']['beta1'], 
                                                               eps=config['optimizer']['eps'], 
                                                               local_rank=local_rank )
 
     #Dictionary saving initialized state of model, optim, ema and epochs
-    init_state = dict( model=init_model, ema=init_ema, optimizer=init_optimizer, epoch=0 )
+    init_state = dict( model=init_model, ema=init_ema, optimizer=init_optimizer, epoch=1 )
 
     #Load the SDE and initialize it with its min and max noise 
     sde = globals()[config['SDE']['name']]( config['SDE']['noise_min'], config['SDE']['noise_max'] )
     pert_mshift = sde.pert_mshift()
     pert_std = sde.pert_std()    
 
-    #Get data
-    data_sets = dataset_setup( config )
-    
     #Create checkpoint directory and load checkpoint if it exists
     checkpoint_dir = os.path.join( config['training']['work_dir'], "checkpoints/")
     min_t = config['SDE']['min_t']
     max_t = config['SDE']['max_t']
 
-
-    if local_rank is None:
+    if local_rank is None or is_master: 
         os.makedirs(checkpoint_dir, exist_ok=True)
-        state = load_checkpoint( checkpoint_dir, 'checkpoint.pth', init_state, device )
-
         logging.info( f"SDE:{config['SDE']['name']}, noise_min:{config['SDE']['noise_min']}, "
-                      f"noise_max:{config['SDE']['noise_max']}, "
-                      f"min_t:{min_t:.0e}, max_t:{max_t}" )
-
-        dataloader = DataLoader( data_sets, batch_size=config['training']['batch_size'], 
-                                 shuffle=config['training']['shuffle'], drop_last=False )
-        
-    else:
-        if is_master:
-            os.makedirs(checkpoint_dir, exist_ok=True)
-            logging.info( f"SDE:{config['SDE']['name']}, noise_min:{config['SDE']['noise_min']}, "
                     f"noise_max:{config['SDE']['noise_max']}, "
                     f"min_t:{min_t:.0e}, max_t:{max_t}" )
-            
-        state = load_checkpoint_ddp( checkpoint_dir, 'checkpoint.pth', init_state, device )
+    
+    state = load_checkpoint( checkpoint_dir, 'checkpoint.pth', init_state, device, local_rank )
+
+    #Load data and dataloader, distribute dataloader if parallel
+    data_sets = dataset_setup( config )
+    if local_rank is None:
+        dataloader = DataLoader( data_sets, batch_size=config['training']['batch_size'], 
+                                 shuffle=config['training']['shuffle'], drop_last=False )
+    
+    else:
         dataloader = DataLoader( data_sets, batch_size=config['training']['batch_size'], 
                                  shuffle=False, drop_last=False, 
                                  sampler=DistributedSampler(dataset=data_sets, 
-                                                            shuffle=config['training']['shuffle']) )
+                                                            shuffle=config['training']['shuffle']) )        
+
+    if local_rank is not None:
+        torch.distributed.barrier()
+
+    return device, state, checkpoint_dir, dataloader, pert_mshift, pert_std, min_t, max_t 
 
 
-    return device, state, checkpoint_dir, dataloader, \
-           pert_mshift, pert_std, min_t, max_t 
-
-
-def save_track_progress( config, state, epoch, sum_loss_iter, counter, checkpoint_dir, is_master=None ):
+def save_track_progress( config, state, epoch, sum_loss_iter, counter, checkpoint_dir, local_rank=None, is_master=None ):
 
     state['epoch'] += 1
+    if local_rank is not None and not is_master:
+        torch.distributed.barrier()
 
-    if is_master is None:
-        save_checkpoint( checkpoint_dir, 'checkpoint.pth', state )
-        if epoch % config['training']['save_ckpt_rate'] == 0 or epoch == 0:
+    if local_rank is None or is_master: 
+        save_checkpoint( checkpoint_dir, 'checkpoint.pth', state, local_rank )
+        if epoch % config['training']['save_ckpt_rate'] == 0 or epoch == 1:
             avg_loss = sum_loss_iter/counter
             logging.info(f"epoch: {epoch}, training loss: {avg_loss.item():.2f}")
-            save_checkpoint( checkpoint_dir, f'checkpoint_{epoch}.pth', state )
+            save_checkpoint( checkpoint_dir, f'checkpoint_{epoch}.pth', state, local_rank )
 
-    else:
-        if is_master: 
-            save_checkpoint_ddp( checkpoint_dir, 'checkpoint.pth', state )
-
-            if epoch % config['training']['save_ckpt_rate'] == 0 or epoch == 0:
-                avg_loss = sum_loss_iter/counter
-                logging.info(f"epoch: {epoch}, training loss: {avg_loss.item():.2f}")
-                save_checkpoint_ddp( checkpoint_dir, f'checkpoint_{epoch}.pth', state )
+    if local_rank is not None and is_master:
+        torch.distributed.barrier()

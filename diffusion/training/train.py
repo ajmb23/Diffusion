@@ -1,9 +1,10 @@
-from diffusion import load_config, check_runtime
+from diffusion import load_config
 from diffusion.training.setup import training_setup, save_track_progress, mult_gpu_setup
 from diffusion.training.one_epoch import one_epoch
 
 from torch.distributed import ReduceOp
 import logging
+import signal
 import torch
 import os 
 
@@ -33,9 +34,12 @@ def single( config_folder, config_file ):
         if torch.isnan(sum_loss_iter):
             logging.info("Model exploded and returns NaN stopping training")
             break
+        
+        runtime_restart( 30, config_folder, config_file, save_track_progress, config,
+                         state, epoch, sum_loss_iter, counter, checkpoint_dir)
 
-        check_runtime( 30, save_track_progress, config, state, epoch, 
-                       sum_loss_iter, counter, checkpoint_dir )
+        #check_runtime( 30, save_track_progress, config, state, epoch, 
+        #               sum_loss_iter, counter, checkpoint_dir )
 
 
 def mult( config_folder, config_file ):
@@ -71,5 +75,40 @@ def mult( config_folder, config_file ):
             logging.info("Model exploded and returns NaN stopping training")
             break
         
-        check_runtime( 30, save_track_progress, config, state, epoch, 
-                       sum_loss_iter, counter, checkpoint_dir, rank==0 )
+        runtime_restart( 30, config_folder, config_file, save_track_progress, config,
+                         state, epoch, sum_loss_iter, counter, checkpoint_dir, local_rank, rank==0 )
+
+        #check_runtime( 30, save_track_progress, config, state, epoch, 
+        #               sum_loss_iter, counter, checkpoint_dir, rank==0 )
+        
+        
+def check_runtime(time_limit, function, *args):
+
+    def handler(signum, frame):
+        raise TimeoutError("Function Took Too Long")
+
+    signal.signal(signal.SIGALRM, handler)
+    signal.alarm(time_limit)
+
+    try:
+        function(*args)
+    finally:
+        signal.alarm(0)  
+
+def runtime_restart(time_limit, config_folder, config_file, function, *args):
+
+    def handler(signum, frame):
+        if torch.cuda.device_count() > 1:
+            torch.distributed.destroy_process_group()
+            mult( config_folder, config_file )
+
+        else:
+            single(config_folder, config_file)
+
+    signal.signal(signal.SIGALRM, handler)
+    signal.alarm(time_limit)
+
+    try:
+        function(*args)
+    finally:
+        signal.alarm(0)  
