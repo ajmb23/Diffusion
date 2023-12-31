@@ -1,14 +1,15 @@
-from diffusion import load_config
+from diffusion import load_config, check_runtime
 from diffusion.training.setup import training_setup, save_track_progress, mult_gpu_setup
 from diffusion.training.one_epoch import one_epoch
-from diffusion import check_runtime
 
 from torch.distributed import ReduceOp
-import torch
 import logging
+import torch
+import os 
 
-def single( config_file ):
-    config = load_config( config_file )
+def single( config_folder, config_file ):
+    config_path = os.path.join(config_folder, config_file)
+    config = load_config( config_path )
 
     device, state, checkpoint_dir, dataloader, \
     pert_mshift, pert_std, min_t, max_t = training_setup( config )
@@ -37,8 +38,9 @@ def single( config_file ):
                        sum_loss_iter, counter, checkpoint_dir )
 
 
-def mult( config_file ):
-    config = load_config( config_file )
+def mult( config_folder, config_file ):
+    config_path = os.path.join(config_folder, config_file)
+    config = load_config( config_path )
     
     local_rank, rank, world_size = mult_gpu_setup()
 
