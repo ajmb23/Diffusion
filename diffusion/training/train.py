@@ -74,7 +74,7 @@ def mult( config_folder, config_file, restart=False ):
                                                                     local_rank=local_rank, rank=rank, 
                                                                     world_size=world_size )
 
-    for epoch in range ( state['epoch'] , config['training']['num_epochs'] ):
+    for epoch in range ( state['epoch'] , config['training']['num_epochs']+1 ):
 
         decorated_one_epoch = runtime_restart(300, config_folder, config_file, restart=True)(one_epoch)
         sum_loss_iter, counter = decorated_one_epoch(
