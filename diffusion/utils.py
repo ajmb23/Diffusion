@@ -1,7 +1,8 @@
-import torch 
-import logging
+import re
 import os 
 import json
+import torch 
+import logging
 import numpy as np
 from scipy.spatial.distance import cdist
 from scipy.stats import norm
@@ -46,8 +47,10 @@ def load_checkpoint(dir_path, filename, state, device, local_rank=None):
         state['optimizer'].load_state_dict(loaded_state['optimizer'])
         state['ema'].load_state_dict(loaded_state['ema'])
         state['epoch'] = loaded_state['epoch']
-
+       
         logging.warning(f"Loaded checkpoint at epoch {state['epoch']} from {dir_path}.")
+        state['epoch'] += 1
+        
         return state
     else:
         logging.warning(f"No checkpoint found at {dir_path}. Starting from scratch.")
@@ -68,6 +71,61 @@ def load_arch_ema(dir_path, filename, init_arch, init_ema, device):
     else:
         ValueError( f"No checkpoint found in directory {dir_path} with name {filename}" )
 
+def restart_checkpoint(dir_path, filename, state, device, local_rank=None):
+    last_checkpoint_file = os.path.join( dir_path, filename )
+    if os.path.isfile( last_checkpoint_file ):
+        
+        last_epoch = torch.load(last_checkpoint_file, map_location='cpu')['epoch']
+        checkpoints = []
+        pattern = re.compile(r"checkpoint_(\d+)\.pth")
+
+        # Listing all files in the directory
+        files = os.listdir(dir_path)
+
+        # Extracting numbers from filenames using regex and storing them in the checkpoints list
+        for file in files:
+            match = pattern.match(file)
+            if match:
+                try:
+                    checkpoint_number = int(match.group(1))
+                    checkpoints.append(checkpoint_number)
+                except ValueError:
+                    pass
+
+        # Sorting the checkpoints in descending order
+        sorted_checkpoints = sorted(checkpoints, reverse=True)
+
+        #If numbered checkpoint list has 2 or more elements
+        if len(sorted_checkpoints) >= 2:
+            if last_epoch > sorted_checkpoints[0]:
+                logging.info(f"Last checkpoint epoch is {last_epoch}, " 
+                             f"starting from numbered checkpoint at epoch {sorted_checkpoints[0]}.")
+                return load_checkpoint(dir_path, f'checkpoint_{sorted_checkpoints[0]}.pth', state, device, local_rank=None)
+
+            else:
+                logging.info(f"Last checkpoint epoch is {last_epoch}, and last numbered checkpoint epoch is also {sorted_checkpoints[0]}. "
+                             f"Starting from before last numbered checkpoint at epoch {sorted_checkpoints[1]}.")
+                return load_checkpoint(dir_path, f'checkpoint_{sorted_checkpoints[1]}.pth', state, device, local_rank=None)
+                       
+        #If numbered checkpoint list has 1 element
+        elif len(sorted_checkpoints) == 1:
+            if last_epoch > sorted_checkpoints[0]:
+                logging.info(f"Last checkpoint epoch is {last_epoch}, starting from numbered checkpoint at epoch {sorted_checkpoints[0]}.")
+                return load_checkpoint(dir_path, f'checkpoint_{sorted_checkpoints[0]}.pth', state, device, local_rank=None)
+
+            else:
+                logging.info(f"Last checkpoint epoch is {last_epoch}, and last numbered checkpoint epoch is also {sorted_checkpoints[0]}. "
+                             f"There are no previous numbered checkpoint, starting from scratch.")
+                return state
+
+        #If numbered checkpoint list is empty
+        else:
+            logging.info(f"No numbered checkpoint found. Starting from scratch.")
+            return state
+
+    else:
+        logging.info(f"No checkpoint found in directory {dir_path}. Starting from scratch.")
+        return state
 
 def sigma_max(dataset):
     #compute larges eucledian distance in dataset

@@ -1,6 +1,6 @@
 from diffusion.architectures import create_model, NCSNpp, DDPM, MLP, bb_MLP
 from diffusion.training.dataset import mult_datasets
-from diffusion import VE_zero, VE, VP, sub_VP, load_checkpoint, save_checkpoint
+from diffusion import VE_zero, VE, VP, sub_VP, load_checkpoint, save_checkpoint, restart_checkpoint
 
 import torch 
 from torch.utils.data import DataLoader
@@ -11,7 +11,7 @@ from datetime import timedelta
 from torch.optim import Adam 
 import logging
 import os
-
+ 
 def mult_gpu_setup():
     assert torch.distributed.is_available()
 
@@ -64,8 +64,7 @@ def dataset_setup( config ):
 
     return data_sets
 
-
-def training_setup( config, local_rank=None, rank=None, world_size=None): 
+def training_setup( config, restart=False, local_rank=None, rank=None, world_size=None): 
     
     #Creates a file which gives infromation about the progress of training 
     logging.basicConfig( filename='training.txt', filemode='a', 
@@ -112,7 +111,10 @@ def training_setup( config, local_rank=None, rank=None, world_size=None):
                     f"noise_max:{config['SDE']['noise_max']}, "
                     f"min_t:{min_t:.0e}, max_t:{max_t}" )
     
-    state = load_checkpoint( checkpoint_dir, 'checkpoint.pth', init_state, device, local_rank )
+    if restart is False:
+        state = load_checkpoint( checkpoint_dir, 'checkpoint.pth', init_state, device, local_rank )
+    else:
+        state = restart_checkpoint( checkpoint_dir, 'checkpoint.pth', init_state, device, local_rank )
 
     #Load data and dataloader, distribute dataloader if parallel
     data_sets = dataset_setup( config )
@@ -134,7 +136,6 @@ def training_setup( config, local_rank=None, rank=None, world_size=None):
 
 def save_track_progress( config, state, epoch, sum_loss_iter, counter, checkpoint_dir, local_rank=None, is_master=None ):
 
-    state['epoch'] += 1
     if local_rank is not None and not is_master:
         torch.distributed.barrier()
 
@@ -147,3 +148,5 @@ def save_track_progress( config, state, epoch, sum_loss_iter, counter, checkpoin
 
     if local_rank is not None and is_master:
         torch.distributed.barrier()
+
+    state['epoch'] += 1
