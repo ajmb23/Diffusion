@@ -2,6 +2,7 @@ from diffusion.architectures import create_model, NCSNpp, DDPM, MLP, bb_MLP
 from diffusion.sampling.sampling_fn import samplers
 from diffusion import VE_zero, VE, VP, sub_VP, load_arch_ema, load_config
 from torch_ema import ExponentialMovingAverage
+from itertools import accumulate
 from tqdm import tqdm 
 import numpy as np 
 import pickle
@@ -23,7 +24,7 @@ def mod_ema_setup( device, dir_path, filename, arch_name, arch_params, ema_rate)
 
     return score_model, ema
 
-def sampling_batch( config, device ):
+def sampling_batch( device, config, batch_size ):
     #Takes care of loading checkpoint, config parameters, and doing the sampling
     #Returns tensors of samples set on batch size
 
@@ -41,7 +42,7 @@ def sampling_batch( config, device ):
     pert_std = sde.pert_std()  
 
     init_sampler = samplers( score_model=score_model, ema=ema, 
-                            batch_size=config['sampling']['batch_size'], 
+                            batch_size=batch_size, 
                             dim=config['sampling']['dim'], 
                             pred_num_steps=config['sampling']['pred_steps'], 
                             mean=config['sampling']['mean'], 
@@ -57,39 +58,42 @@ def sampling_batch( config, device ):
     np_samples = samples.detach().cpu().numpy()
     return np_samples
 
-def split_idx(idx_min, idx_max, ngpu):
-    # Calculate total range and interval size
-    total_range = idx_max - idx_min + 1
-    base_interval = total_range // ngpu
-    remainder = total_range % ngpu
+def split_batch(sidx_min, sidx_max, batch_size, ngpus):
+    #Based on sidx_min, sidx_max, batch_size and ngpus it splits up the different
+    #sizes over the different number of gpus to get the total amount samples
+    #returns list with ngpus of sublist containing that gpus batch sizes
+    total_samples = sidx_max-sidx_min
+    base_samples_per_gpu, remainder = divmod(total_samples, ngpus)
+    samples_per_gpu = [base_samples_per_gpu + 1 if i < remainder else base_samples_per_gpu for i in range(ngpus)]
+    
+    batches_per_gpu = [[batch_size] * (sample // batch_size) + ([sample % batch_size] if sample % batch_size else [])
+                      for sample in samples_per_gpu]
+    
+    return batches_per_gpu
 
-    # Initialize lists to hold the split values
-    split_lists = [[] for _ in range(ngpu)]
+def global_sidx( split_sdix_list ):
+    #keeps track of the total samples that batch size on that gpu created
+    flat_list = [element for sublist in zip(*split_sdix_list) for element in sublist]
+    new_list = list(accumulate(flat_list))
+    # Reconstructing the list in the specified format
+    num_sublists = len(split_sdix_list)
+    reconstructed_list = [[new_list[i] for i in range(j, len(new_list), num_sublists)] for j in range(num_sublists)]
 
-    # Distribute values into lists
-    current_idx = idx_min
-    for i in range(ngpu):
-        # Calculate interval size for this list
-        interval = base_interval + (1 if i < remainder else 0)
+    return reconstructed_list
 
-        # Add values to the current list
-        split_lists[i] = list(range(current_idx, current_idx + interval))
-
-        # Update current index
-        current_idx += interval
-
-    return split_lists
-
-def sample( config_file, idx_min, idx_max ):
+def sample( config_file, idx_min, idx_max, sidx_min, sidx_max,  ):
     config = load_config( config_file )
     device = config['device']
 
-    sim_idx_list = split_idx( idx_min=idx_min, idx_max=idx_max, 
-                             ngpu=torch.cuda.device_count() ) [ int(os.environ.get("SLURM_LOCALID")) ]
+    batch_sizes = split_batch( sidx_min=sidx_min, sidx_max=sidx_max, batch_size=config['batch_size'], 
+                               ngpus=torch.cuda.device_count() ) 
+    
+    global_sidx = global_sidx( batch_sizes )[ int(os.environ.get("SLURM_LOCALID")) ]
+    local_batch_sizes = batch_sizes[ int(os.environ.get("SLURM_LOCALID")) ]
     
     #Check if dictionnary exists or not
     os.makedirs(config['sampling']['sample_dir'], exist_ok=True)
-    dic_name = f"{min(sim_idx_list)}_{max(sim_idx_list)}_{config['sampling']['dict_name']}"
+    dic_name = f"{idx_min}_{idx_max}_{sidx_min}_{sidx_max}.pkl"
     sample_dic_file = os.path.join( config['sampling']['sample_dir'], dic_name )
 
     if os.path.isfile( sample_dic_file ) is False:
@@ -98,22 +102,13 @@ def sample( config_file, idx_min, idx_max ):
         with open(sample_dic_file, 'rb') as file:
             sample_dic = pickle.load(file)
 
-    #key of dictionnary is sim number, sample for each sim
-    for sim_idx in sim_idx_list:
-        print(sim_idx)
+    #sample
+    for sim_idx in range(idx_min, idx_max):
+        for i, batch_size in enumerate(local_batch_sizes):
 
-        #If sim number is not yet a key create it
-        if sim_idx not in sample_dic:
-            sample_dic[sim_idx] = []
-
-        #Check number of arrays in list at index, if less than total_samp/batch_size then add more samples
-        i = len( sample_dic[sim_idx] ) 
-        while i < config['sampling']['total_samp'] /  config['sampling']['batch_size']:
-
-            samples = sampling_batch( config, device )
-            sample_dic[sim_idx].append(samples)
+            if (sim_idx, global_sidx[i]-batch_size+1, global_sidx[i]+batch_size) not in sample_dic:
+                samples = sampling_batch( device, config, batch_size )
+                sample_dic[(sim_idx, global_sidx[i]-batch_size+1, global_sidx[i]+batch_size)] = samples
 
             with open(sample_dic_file, 'wb') as file:
-                pickle.dump(sample_dic, file)
-           
-            i+=1
+                pickle.dump(sample_dic, file)      
