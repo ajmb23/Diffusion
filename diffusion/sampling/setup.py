@@ -23,7 +23,7 @@ def mod_ema_setup( device, dir_path, filename, arch_name, arch_params, ema_rate)
 
     return score_model, ema
 
-def sample( config, device ):
+def sampling_batch( config, device ):
     #Takes care of loading checkpoint, config parameters, and doing the sampling
     #Returns tensors of samples set on batch size
 
@@ -80,7 +80,7 @@ def split_idx(idx_min, idx_max, ngpu):
 
     return split_lists
 
-def MNIST( config_file, idx_min, idx_max ):
+def sample( config_file, idx_min, idx_max ):
     config = load_config( config_file )
     device = config['device']
 
@@ -110,7 +110,7 @@ def MNIST( config_file, idx_min, idx_max ):
         i = len( sample_dic[sim_idx] ) 
         while i < config['sampling']['total_samp'] /  config['sampling']['batch_size']:
 
-            samples = sample( config, device )
+            samples = sampling_batch( config, device )
             sample_dic[sim_idx].append(samples)
 
             with open(sample_dic_file, 'wb') as file:

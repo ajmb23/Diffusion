@@ -149,7 +149,6 @@ def sigma_max_torch( data_dic_file, device ):
     max_distance = torch.max( distance )
     return  max_distance.cpu().item()
 
-
 def VE_samp_prob( sigma_min, sigma_max, num_steps, dim ):
     gamma = ( sigma_max / sigma_min )**(1/num_steps)
     c = (2 * dim)**(1/2)

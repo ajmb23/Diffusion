@@ -82,11 +82,11 @@ def training_setup( config, restart=False, local_rank=None, rank=None, world_siz
         logging.info(f"World size: {world_size}, global rank: {rank}, local rank: {local_rank}")
 
     #Initialize architecture, ema, optimizer
-    learning_rate = config['optimizer']['lr'] * world_size if world_size is not None else config['optimizer']['lr']
+    #learning_rate = config['optimizer']['lr'] * world_size if world_size is not None else config['optimizer']['lr']
     init_model, init_ema, init_optimizer = mod_ema_opt_setup( device=device, arch_name=config['model']['name'], 
                                                               arch_params=config['model']['params'], 
                                                               ema_rate=config['model']['ema_rate'], 
-                                                              lr=learning_rate, 
+                                                              lr=config['optimizer']['lr'], 
                                                               weight_decay=config['optimizer']['weight_decay'], 
                                                               beta1=config['optimizer']['beta1'], 
                                                               eps=config['optimizer']['eps'], 
