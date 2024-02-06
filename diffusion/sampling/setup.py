@@ -27,7 +27,7 @@ def mod_ema_setup( device, dir_path, filename, arch_name, arch_params, ema_rate)
 def sampling_batch( device, config, batch_size ):
     #Takes care of loading checkpoint, config parameters, and doing the sampling
     #Returns tensors of samples set on batch size
-
+    
     checkpoint_dir = os.path.join( config['training']['work_dir'], "checkpoints/")
     score_model, ema = mod_ema_setup(  device=device, dir_path=checkpoint_dir,
                                        filename=config['sampling']['ckpt_filename'], 
@@ -62,7 +62,7 @@ def split_batch(sidx_min, sidx_max, batch_size, ngpus):
     #Based on sidx_min, sidx_max, batch_size and ngpus it splits up the different
     #sizes over the different number of gpus to get the total amount samples
     #returns list with ngpus of sublist containing that gpus batch sizes
-    total_samples = sidx_max-sidx_min
+    total_samples = sidx_max-sidx_min+1
     base_samples_per_gpu, remainder = divmod(total_samples, ngpus)
     samples_per_gpu = [base_samples_per_gpu + 1 if i < remainder else base_samples_per_gpu for i in range(ngpus)]
     
@@ -85,15 +85,16 @@ def sample( config_file, idx_min, idx_max, sidx_min, sidx_max,  ):
     config = load_config( config_file )
     device = config['device']
 
-    batch_sizes = split_batch( sidx_min=sidx_min, sidx_max=sidx_max, batch_size=config['batch_size'], 
+    batch_sizes = split_batch( sidx_min=sidx_min, sidx_max=sidx_max, 
+                               batch_size=config['sampling']['batch_size'], 
                                ngpus=torch.cuda.device_count() ) 
     
-    global_sidx = global_sidx( batch_sizes )[ int(os.environ.get("SLURM_LOCALID")) ]
+    global_sidxs = global_sidx( batch_sizes )[ int(os.environ.get("SLURM_LOCALID")) ]
     local_batch_sizes = batch_sizes[ int(os.environ.get("SLURM_LOCALID")) ]
     
     #Check if dictionnary exists or not
     os.makedirs(config['sampling']['sample_dir'], exist_ok=True)
-    dic_name = f"{idx_min}_{idx_max}_{sidx_min}_{sidx_max}.pkl"
+    dic_name = f"{idx_min}_{idx_max}_{global_sidxs[0]-config['sampling']['batch_size']}_{global_sidxs[-1]}.pkl"
     sample_dic_file = os.path.join( config['sampling']['sample_dir'], dic_name )
 
     if os.path.isfile( sample_dic_file ) is False:
@@ -103,12 +104,14 @@ def sample( config_file, idx_min, idx_max, sidx_min, sidx_max,  ):
             sample_dic = pickle.load(file)
 
     #sample
-    for sim_idx in range(idx_min, idx_max):
+    for sim_idx in range(idx_min, idx_max+1):
         for i, batch_size in enumerate(local_batch_sizes):
-
-            if (sim_idx, global_sidx[i]-batch_size+1, global_sidx[i]+batch_size) not in sample_dic:
+            print(sim_idx)
+            print(global_sidxs[i]-batch_size+1)
+            print(global_sidxs[i])
+            if (sim_idx, global_sidxs[i]-batch_size+1, global_sidxs[i]) not in sample_dic:
                 samples = sampling_batch( device, config, batch_size )
-                sample_dic[(sim_idx, global_sidx[i]-batch_size+1, global_sidx[i]+batch_size)] = samples
+                sample_dic[(sim_idx, global_sidxs[i]-batch_size+1, global_sidxs[i])] = samples
 
             with open(sample_dic_file, 'wb') as file:
                 pickle.dump(sample_dic, file)      
