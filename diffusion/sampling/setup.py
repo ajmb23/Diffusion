@@ -8,6 +8,7 @@ import numpy as np
 import pickle
 import torch
 import os 
+from filelock import FileLock
 
 def mod_ema_setup( device, dir_path, filename, arch_name, arch_params, ema_rate):
     #Initialize architecture, ema
@@ -24,7 +25,7 @@ def mod_ema_setup( device, dir_path, filename, arch_name, arch_params, ema_rate)
 
     return score_model, ema
 
-def sampling_batch( device, config, batch_size ):
+def sampling_batch( device, config, batch_size,  ):
     #Takes care of loading checkpoint, config parameters, and doing the sampling
     #Returns tensors of samples set on batch size
     
@@ -94,14 +95,19 @@ def sample( config_file, idx_min, idx_max, sidx_min, sidx_max,  ):
     
     #Check if dictionnary exists or not
     os.makedirs(config['sampling']['sample_dir'], exist_ok=True)
-    dic_name = f"{idx_min}_{idx_max}_{global_sidxs[0]-config['sampling']['batch_size']}_{global_sidxs[-1]}.pkl"
+    dic_name = "samples.pkl"
+    #dic_name = f"{idx_min}_{idx_max}_{global_sidxs[0]-config['sampling']['batch_size']}_{global_sidxs[-1]}.pkl"
     sample_dic_file = os.path.join( config['sampling']['sample_dir'], dic_name )
 
     if os.path.isfile( sample_dic_file ) is False:
         sample_dic = {}
     else:
-        with open(sample_dic_file, 'rb') as file:
-            sample_dic = pickle.load(file)
+        with FileLock(sample_dic_file):
+            with open(sample_dic_file, 'rb') as file:
+                sample_dic = pickle.load(file)
+
+        #with open(sample_dic_file, 'rb') as file:
+        #    sample_dic = pickle.load(file)
 
     #sample
     for sim_idx in range(idx_min, idx_max+1):
@@ -113,5 +119,6 @@ def sample( config_file, idx_min, idx_max, sidx_min, sidx_max,  ):
                 samples = sampling_batch( device, config, batch_size )
                 sample_dic[(sim_idx, global_sidxs[i]-batch_size+1, global_sidxs[i])] = samples
 
-            with open(sample_dic_file, 'wb') as file:
-                pickle.dump(sample_dic, file)      
+            with FileLock(sample_dic_file):
+                with open(sample_dic_file, 'wb') as file:
+                    pickle.dump(sample_dic, file)      
