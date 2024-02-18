@@ -8,7 +8,7 @@ class samplers():
                pred_num_steps, mean, std, first_t, last_t, 
                pert_std, drift_coeff, diffusion_coeff, device, 
                num_corr_steps=None, corr_step_type=None, 
-               corr_step_size=None, cond_data=None):
+               corr_step_size=None, *cond):
     
     self.score_model = score_model
     self.ema = ema
@@ -29,7 +29,10 @@ class samplers():
     self.num_corr_steps = num_corr_steps
     self.corr_step_type = corr_step_type
     self.corr_step_size = corr_step_size
-    self.cond_data = cond_data
+    
+    self.cond = []
+    if cond is not None:
+        self.cond = torch.tensor(cond).reshape(1, *dim).repeat(batch_size, 1)
   
   def setup(self):
 
@@ -37,19 +40,14 @@ class samplers():
     time_steps = torch.linspace(self.first_t, self.last_t, self.pred_num_steps, device=self.device)
     dt = (self.last_t-self.first_t)/self.pred_num_steps
 
-    if self.cond_data is not None:
-      cond = self.cond_data
-    else:
-      cond = []
-
-    return time_steps[1:], dt, init_x, cond
+    return time_steps[1:], dt, init_x
 
 
   def EM_update(self, x, dt, time_step, *cond):
 
     f = x*self.drift_coeff(time_step)
     g = self.diffusion_coeff( torch.ones_like(x)*time_step )
-    score = self.score_model( torch.ones([self.B], device=self.device)*time_step, x, cond )/self.pert_std(time_step)
+    score = self.score_model( torch.ones([self.B], device=self.device)*time_step, x, *cond )/self.pert_std(time_step)
     
     if time_step > self.last_t:
         x_mean = x + ( f - g**2 * score ) * dt
@@ -62,6 +60,7 @@ class samplers():
     
     
   def langevin_update(self, x, time_step, step_size, step_type=None):
+    #This looks wrong why is time torch.ones ?
     score = self.score_model( torch.ones([self.B], device=self.device)*time_step, x )/self.pert_std(time_step)
     if step_type=="pert_std":
       step_size = step_size * self.pert_std( time_step )    
@@ -73,7 +72,7 @@ class samplers():
 
   def sample(self, tqdm_bool):
 
-    time_steps, dt, x, cond = self.setup()
+    time_steps, dt, x = self.setup()
 
     if tqdm_bool == True:
         time_steps = tqdm( time_steps )
@@ -82,7 +81,7 @@ class samplers():
         
         if self.num_corr_steps is None or self.num_corr_steps==0: 
           for time_step in time_steps:
-              x = self.EM_update( x, dt, time_step, cond )
+              x = self.EM_update( x, dt, time_step, self.cond )
           return x
         
         else:

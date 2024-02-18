@@ -25,7 +25,7 @@ def mod_ema_setup( device, dir_path, filename, arch_name, arch_params, ema_rate)
 
     return score_model, ema
 
-def sampling_batch( device, config, batch_size,  ):
+def sampling_batch( device, config, batch_size, *cond_img ):
     #Takes care of loading checkpoint, config parameters, and doing the sampling
     #Returns tensors of samples set on batch size
     
@@ -42,7 +42,7 @@ def sampling_batch( device, config, batch_size,  ):
     diffusion_coeff = sde.diffusion_coeff() 
     pert_std = sde.pert_std()  
 
-    init_sampler = samplers( score_model=score_model, ema=ema, 
+    init_sampler = samplers( cond_img, score_model=score_model, ema=ema, 
                             batch_size=batch_size, 
                             dim=config['sampling']['dim'], 
                             pred_num_steps=config['sampling']['pred_steps'], 
@@ -82,7 +82,7 @@ def global_sidx( split_sdix_list ):
 
     return reconstructed_list
 
-def sample( config_file, idx_min, idx_max, sidx_min, sidx_max,  ):
+def sample( config_file, idx_min, idx_max, sidx_min, sidx_max, cond_dic ):
     config = load_config( config_file )
     device = config['device']
 
@@ -96,29 +96,34 @@ def sample( config_file, idx_min, idx_max, sidx_min, sidx_max,  ):
     #Check if dictionnary exists or not
     os.makedirs(config['sampling']['sample_dir'], exist_ok=True)
     dic_name = "samples.pkl"
-    #dic_name = f"{idx_min}_{idx_max}_{global_sidxs[0]-config['sampling']['batch_size']}_{global_sidxs[-1]}.pkl"
+    dic_name = f"{idx_min}_{idx_max}_{global_sidxs[0]-config['sampling']['batch_size']+1}_{global_sidxs[-1]}.pkl"
     sample_dic_file = os.path.join( config['sampling']['sample_dir'], dic_name )
 
     if os.path.isfile( sample_dic_file ) is False:
         sample_dic = {}
     else:
-        with FileLock(sample_dic_file):
-            with open(sample_dic_file, 'rb') as file:
-                sample_dic = pickle.load(file)
-
-        #with open(sample_dic_file, 'rb') as file:
-        #    sample_dic = pickle.load(file)
+        with open(sample_dic_file, 'rb') as file:
+            sample_dic = pickle.load(file)
 
     #sample
     for sim_idx in range(idx_min, idx_max+1):
-        for i, batch_size in enumerate(local_batch_sizes):
-            print(sim_idx)
-            print(global_sidxs[i]-batch_size+1)
-            print(global_sidxs[i])
-            if (sim_idx, global_sidxs[i]-batch_size+1, global_sidxs[i]) not in sample_dic:
-                samples = sampling_batch( device, config, batch_size )
-                sample_dic[(sim_idx, global_sidxs[i]-batch_size+1, global_sidxs[i])] = samples
+        for batch_size in local_batch_sizes:
 
-            with FileLock(sample_dic_file):
+            if sim_idx not in sample_dic:
+                #If key doesn't exist create it
+                cosmo = cond_dic[sim_idx][0]
+                sample_dic[sim_idx] = [cosmo, None] 
+
+            if sample_dic[sim_idx][1]==None or sample_dic[sim_idx][1].shape[0]<sum(local_batch_sizes): 
+                cond_data = cond_dic[sim_idx][1]
+                samples = sampling_batch( device, config, batch_size, cond_img=cond_data )
+                
+                #Concatenate new samples with ones already in dictionary
+                if sample_dic[sim_idx][1]==None:
+                    sample_dic[sim_idx][1] = samples
+                
+                else:
+                    sample_dic[sim_idx][1] = np.append( sample_dic[sim_idx][1], samples, axis=0 )
+                
                 with open(sample_dic_file, 'wb') as file:
                     pickle.dump(sample_dic, file)      
