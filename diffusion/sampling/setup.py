@@ -8,7 +8,7 @@ import numpy as np
 import pickle
 import torch
 import os 
-from filelock import FileLock
+import time 
 
 def mod_ema_setup( device, dir_path, filename, arch_name, arch_params, ema_rate):
     #Initialize architecture, ema
@@ -42,18 +42,16 @@ def sampling_batch( device, config, batch_size, *cond_img ):
     diffusion_coeff = sde.diffusion_coeff() 
     pert_std = sde.pert_std()  
 
-    init_sampler = samplers( cond_img, score_model=score_model, ema=ema, 
-                            batch_size=batch_size, 
-                            dim=config['sampling']['dim'], 
-                            pred_num_steps=config['sampling']['pred_steps'], 
-                            mean=config['sampling']['mean'], 
-                            std=config['sampling']['std'], 
-                            first_t=config['sampling']['start_t'], 
-                            last_t=config['sampling']['end_t'], 
-                            pert_std=pert_std, 
-                            drift_coeff=drift_coeff, 
-                            diffusion_coeff=diffusion_coeff, 
-                            device=device )
+    init_sampler = samplers(score_model, ema, batch_size, 
+                            config['sampling']['dim'], 
+                            config['sampling']['pred_steps'], 
+                            config['sampling']['mean'], 
+                            config['sampling']['std'], 
+                            config['sampling']['start_t'], 
+                            config['sampling']['end_t'], 
+                            pert_std, drift_coeff, 
+                            diffusion_coeff, device,
+                            None, None, None, cond_img )
 
     samples = init_sampler.sample( config['sampling']['tqdm_bool'] )
     np_samples = samples.detach().cpu().numpy()
@@ -82,7 +80,12 @@ def global_sidx( split_sdix_list ):
 
     return reconstructed_list
 
-def sample( config_file, idx_min, idx_max, sidx_min, sidx_max, cond_dic ):
+def sample( config_file, idx_min, idx_max, sidx_min, sidx_max, cond_dic_file ):
+    gpu_id = int(os.environ.get("SLURM_LOCALID"))
+    time.sleep( 5*gpu_id )
+    with open(cond_dic_file, 'rb') as file:
+        cond_dic = pickle.load(file)
+
     config = load_config( config_file )
     device = config['device']
 
@@ -90,13 +93,12 @@ def sample( config_file, idx_min, idx_max, sidx_min, sidx_max, cond_dic ):
                                batch_size=config['sampling']['batch_size'], 
                                ngpus=torch.cuda.device_count() ) 
     
-    global_sidxs = global_sidx( batch_sizes )[ int(os.environ.get("SLURM_LOCALID")) ]
-    local_batch_sizes = batch_sizes[ int(os.environ.get("SLURM_LOCALID")) ]
+    #global_sidxs = global_sidx( batch_sizes )[ int(os.environ.get("SLURM_LOCALID")) ]
+    local_batch_sizes = batch_sizes[gpu_id]
     
     #Check if dictionnary exists or not
     os.makedirs(config['sampling']['sample_dir'], exist_ok=True)
-    dic_name = "samples.pkl"
-    dic_name = f"{idx_min}_{idx_max}_{global_sidxs[0]-config['sampling']['batch_size']+1}_{global_sidxs[-1]}.pkl"
+    dic_name = f"{idx_min}_{idx_max}_{sum(local_batch_sizes)}_{gpu_id}.pkl"
     sample_dic_file = os.path.join( config['sampling']['sample_dir'], dic_name )
 
     if os.path.isfile( sample_dic_file ) is False:
@@ -114,12 +116,12 @@ def sample( config_file, idx_min, idx_max, sidx_min, sidx_max, cond_dic ):
                 cosmo = cond_dic[sim_idx][0]
                 sample_dic[sim_idx] = [cosmo, None] 
 
-            if sample_dic[sim_idx][1]==None or sample_dic[sim_idx][1].shape[0]<sum(local_batch_sizes): 
+            if sample_dic[sim_idx][1] is None or sample_dic[sim_idx][1].shape[0]<sum(local_batch_sizes): 
                 cond_data = cond_dic[sim_idx][1]
-                samples = sampling_batch( device, config, batch_size, cond_img=cond_data )
+                samples = sampling_batch( device, config, batch_size, cond_data )
                 
                 #Concatenate new samples with ones already in dictionary
-                if sample_dic[sim_idx][1]==None:
+                if sample_dic[sim_idx][1] is None:
                     sample_dic[sim_idx][1] = samples
                 
                 else:
