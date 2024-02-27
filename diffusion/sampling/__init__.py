@@ -1,1 +1,1 @@
-from diffusion.sampling.setup import sample
+from diffusion.sampling.setup import sample, merge_dictionaries
