@@ -30,18 +30,16 @@ def runtime_restart( time_limit, config_folder, config_file, restart):
 
     return decorator
 
-def single( config_folder, config_file, restart=False ):
+def single( config_folder, config_file ):
     config_path = os.path.join(config_folder, config_file)
     config = load_config( config_path )
 
-    decorated_training_setup = runtime_restart(300, config_folder, config_file, restart=True)(training_setup)
     device, state, checkpoint_dir, dataloader, \
-    pert_mshift, pert_std, min_t, max_t = decorated_training_setup( config, restart )
+    pert_mshift, pert_std, min_t, max_t = training_setup(config)
 
     for epoch in range ( state['epoch'] , config['training']['num_epochs']+1 ):
 
-        decorated_one_epoch = runtime_restart(300, config_folder, config_file, restart=True)(one_epoch)
-        sum_loss_iter, counter = decorated_one_epoch(
+        sum_loss_iter, counter = one_epoch(
                                     device=device, 
                                     dataloader=dataloader, 
                                     score_model=state['model'], 
@@ -59,8 +57,7 @@ def single( config_folder, config_file, restart=False ):
             logging.info("Model exploded and returns NaN stopping training")
             break
         
-        decorated_save_track_progess = runtime_restart(60, config_folder, config_file, restart=True)(save_track_progress)
-        decorated_save_track_progess( config, state, epoch, sum_loss_iter, counter, checkpoint_dir )
+        save_track_progress( config, state, epoch, sum_loss_iter, counter, checkpoint_dir )
 
 def mult( config_folder, config_file, restart=False ):
     config_path = os.path.join(config_folder, config_file)

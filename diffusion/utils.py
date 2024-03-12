@@ -31,14 +31,29 @@ def save_checkpoint(dir_path, filename, state, local_rank=None):
     checkpoint_file = os.path.join( dir_path, filename )
     torch.save(saved_state, checkpoint_file)
 
-def load_checkpoint(dir_path, filename, state, device, local_rank=None):
+def find_highest_numbered_file(directory, file_extension):
+    numbered_files = [
+        file 
+        for file in os.listdir(directory) 
+        if file.endswith(file_extension) and any(char.isdigit() for char in file)
+    ]
+
+    if not numbered_files:
+        return None
+
+    highest_num = max(int(re.findall(r'\d+', file)[0]) for file in numbered_files)
+    highest_file = next((file for file in numbered_files if str(highest_num) in file), None)
+    return highest_file
+
+def load_checkpoint(dir_path, state, device, local_rank=None):
 
     # Check for existing checkpoint, if there is one it loads it
-    checkpoint_file = os.path.join( dir_path, filename )
+    checkpoint_file = find_highest_numbered_file(dir_path, '.pth')
 
-    if os.path.isfile( checkpoint_file ):
+    if checkpoint_file is not None:
 
-        loaded_state = torch.load(checkpoint_file, map_location=device)
+        checkpoint_file_path = os.path.join( dir_path, checkpoint_file )
+        loaded_state = torch.load(checkpoint_file_path, map_location=device)
         if local_rank is None:
             state['model'].load_state_dict(loaded_state['model'], strict=False)
         else:

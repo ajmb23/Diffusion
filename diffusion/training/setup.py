@@ -1,6 +1,6 @@
 from diffusion.architectures import create_model, NCSNpp, DDPM, MLP, bb_MLP
 from diffusion.training.dataset import mult_datasets
-from diffusion import VE_zero, VE, VP, sub_VP, load_checkpoint, save_checkpoint, restart_checkpoint
+from diffusion import VE_zero, VE, VP, sub_VP, load_checkpoint, save_checkpoint, restart_checkpoint, load_config
 
 import torch 
 from torch.utils.data import DataLoader
@@ -65,7 +65,7 @@ def dataset_setup( config ):
     return data_sets
 
 def training_setup( config, restart=False, local_rank=None, rank=None, world_size=None): 
-    
+
     #Creates a file which gives infromation about the progress of training 
     logging.basicConfig( filename='training.txt', filemode='a', 
                          format='%(levelname)s - %(asctime)s - %(message)s', 
@@ -82,7 +82,6 @@ def training_setup( config, restart=False, local_rank=None, rank=None, world_siz
         logging.info(f"World size: {world_size}, global rank: {rank}, local rank: {local_rank}")
 
     #Initialize architecture, ema, optimizer
-    #learning_rate = config['optimizer']['lr'] * world_size if world_size is not None else config['optimizer']['lr']
     init_model, init_ema, init_optimizer = mod_ema_opt_setup( device=device, arch_name=config['model']['name'], 
                                                               arch_params=config['model']['params'], 
                                                               ema_rate=config['model']['ema_rate'], 
@@ -112,7 +111,7 @@ def training_setup( config, restart=False, local_rank=None, rank=None, world_siz
                     f"min_t:{min_t:.0e}, max_t:{max_t}" )
     
     if restart is False:
-        state = load_checkpoint( checkpoint_dir, 'checkpoint.pth', init_state, device, local_rank )
+        state = load_checkpoint( checkpoint_dir, init_state, device, local_rank )
     else:
         state = restart_checkpoint( checkpoint_dir, 'checkpoint.pth', init_state, device, local_rank )
 
@@ -135,18 +134,19 @@ def training_setup( config, restart=False, local_rank=None, rank=None, world_siz
 
 
 def save_track_progress( config, state, epoch, sum_loss_iter, counter, checkpoint_dir, local_rank=None, is_master=None ):
+    if epoch % config['training']['save_ckpt_rate'] == 0 or epoch == 1:
 
-    if local_rank is not None and not is_master:
-        torch.distributed.barrier()
+        if local_rank is not None and not is_master:
+            torch.distributed.barrier()
 
-    if local_rank is None or is_master: 
-        save_checkpoint( checkpoint_dir, 'checkpoint.pth', state, local_rank )
-        if epoch % config['training']['save_ckpt_rate'] == 0 or epoch == 1:
+        if local_rank is None or is_master: 
+            #save_checkpoint( checkpoint_dir, 'checkpoint.pth', state, local_rank )
+            
             avg_loss = sum_loss_iter/counter
             logging.info(f"epoch: {epoch}, training loss: {avg_loss.item():.2f}")
             save_checkpoint( checkpoint_dir, f'checkpoint_{epoch}.pth', state, local_rank )
 
-    if local_rank is not None and is_master:
-        torch.distributed.barrier()
+        if local_rank is not None and is_master:
+            torch.distributed.barrier()
 
     state['epoch'] += 1
