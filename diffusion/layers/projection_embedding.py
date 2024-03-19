@@ -30,14 +30,33 @@ class PositionalEncoding(nn.Module):
         x_proj = left_matmul(self.W, x) * 2 * pi
         return torch.cat([torch.sin(x_proj), torch.cos(x_proj)], dim=1)
 
-def FourierFeatures(freq, x):
+def FourierFeatures(freq, x, options):
     with torch.no_grad():
         coeff = 2.*np.pi*torch.tensor(freq)
 
+        if options[2] is not None:
+            min_val, max_val = options[2]
+            x -= min_val
+            x /= (max_val-min_val)
+
         features=[x,]
         for i in coeff:
-            features.append( torch.sin(x*i) )
-            features.append( torch.cos(x*i) )
+
+            if options[0] == "sin" or options[0] == "both":
+                proj1 = torch.sin(x*i)
+
+                if options[1] == True:
+                    proj1 = torch.abs(proj1)
+                
+                features.append(proj1)
+
+            if options[0] == "cos" or options[0] == "both":
+                proj2 = torch.cos(x*i)
+
+                if options[1] == True:
+                    proj2 = torch.abs(proj2)
+                
+                features.append(proj2) 
 
         concatenated_features = torch.cat(features, dim=1)
         return concatenated_features

@@ -60,9 +60,13 @@ class NCSNpp(nn.Module):
             condition_input_channels:int=None,
             condition_vector_channels:int=None,
             fourier_features:list=None,
+            fourier_input_opt:list=None, 
+            fourier_cond_opt:list=None,
             **kwargs
           ):
         super().__init__()
+        if kwargs:
+            raise TypeError(f"Unexpected keyword arguments: {kwargs.keys()}")
         if dimensions not in [1, 2, 3]:
             raise ValueError("Input must have 1, 2, or 3 spatial dimensions to use this architecture")
         self.conditioned = False
@@ -95,6 +99,8 @@ class NCSNpp(nn.Module):
         self.condition_input_channels = 0 if condition_input_channels is None else condition_input_channels
         self.condition_vector_channels = condition_vector_channels
         self.fourier_features = fourier_features
+        self.fourier_input_options = fourier_input_opt
+        self.fourier_cond_options = fourier_cond_opt
 
         self.dimensions = dimensions
         self.channels = channels
@@ -209,8 +215,22 @@ class NCSNpp(nn.Module):
             raise ValueError(f'resblock type {resblock_type} unrecognized.')
 
         # Downsampling block
-        input_pyramid_ch = ( channels + self.condition_input_channels + 
-                             (2 * len(fourier_features) if fourier_features is not None and len(fourier_features) > 0 else 0) )
+        extra_dim=0
+        if self.fourier_input_options:
+            if self.fourier_input_options[0] == "sin" or self.fourier_input_options[0] == "cos":
+                extra_dim = self.channels * len(self.fourier_features)
+            
+            elif self.fourier_input_options[0] == "both": 
+                extra_dim = self.channels * 2*len(self.fourier_features)
+        
+        if self.fourier_cond_options:
+            if self.fourier_cond_options[0] == "sin" or self.fourier_input_options[0] == "cos":
+                extra_dim = self.condition_input_channels * len(self.fourier_features)
+            
+            elif self.fourier_input_options[0] == "both": 
+                extra_dim = self.condition_input_channels * 2*len(self.fourier_features)
+
+        input_pyramid_ch = ( channels + self.condition_input_channels + extra_dim )
                                  
         modules.append(conv3x3(input_pyramid_ch, nf, dimensions=dimensions))
         hs_c = [nf]
@@ -317,12 +337,16 @@ class NCSNpp(nn.Module):
         temb = modules[m_idx](self.act(temb))
         m_idx += 1
 
-        if self.fourier_features:
-            x = FourierFeatures(self.fourier_features, x)
-
+        if self.fourier_input_options:
+            x = FourierFeatures(self.fourier_features, x, self.fourier_input_options)
+        
         if self.conditioned:
             for j, condition in enumerate(args):
                 if self.condition_type[j].lower() == "input":
+                    
+                    if self.fourier_cond_options:
+                        condition = FourierFeatures(self.fourier_features, condition, self.fourier_cond_options)
+
                     x = torch.cat([x, condition], dim=1)
         
         # Downsampling block
