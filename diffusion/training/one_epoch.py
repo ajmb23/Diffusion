@@ -1,7 +1,8 @@
 import torch
+from diffusion.training import int_to_bits
 
 def one_epoch( device, dataloader, score_model, optimizer, ema, pert_mshift, 
-               pert_std, min_t, max_t, grad_clip=0, cond_noise=0 ):
+               pert_std, min_t, max_t, grad_clip=0, cond_noise=0, bit=False ):
 
     data_iter = iter(dataloader)
     sum_loss_iter = torch.tensor([0.0], device=device)
@@ -15,6 +16,9 @@ def one_epoch( device, dataloader, score_model, optimizer, ema, pert_mshift,
         else:
             x = X
             args = []
+
+        if bit:
+            x = int_to_bits(x=x, bits=bit )
 
         B, *D = x.shape
 

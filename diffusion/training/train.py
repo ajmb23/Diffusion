@@ -50,7 +50,8 @@ def single( config_folder, config_file ):
                                     min_t=min_t, 
                                     max_t=max_t, 
                                     grad_clip=config['optimizer']['grad_clip'], 
-                                    cond_noise=config['data']['cond_noise']
+                                    cond_noise=config['data']['cond_noise'],
+                                    bit=config['training']['bit']
                                     )
         
         if torch.isnan(sum_loss_iter):
