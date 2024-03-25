@@ -52,7 +52,11 @@ def sampling_batch( device, config, batch_size, *cond_img ):
                             config['sampling']['end_t'], 
                             pert_std, drift_coeff, 
                             diffusion_coeff, device,
-                            None, None, None, cond_img )
+                            config['sampling']['num_corr_steps'], 
+                            config['sampling']['corr_step_type'], 
+                            config['sampling']['corr_step_size'],
+                            config['sampling']['corr_times'], 
+                            cond_img )
 
     samples = init_sampler.sample( config['sampling']['tqdm_bool'] )
     np_samples = samples.detach().cpu().numpy()

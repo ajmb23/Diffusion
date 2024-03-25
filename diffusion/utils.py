@@ -154,8 +154,7 @@ def sigma_max_torch( data_dic_file, device ):
     
     flatten_data = []
     for key in data_dic:
-        for element in data_dic[key][1]:
-            flatten_data.append( element.flatten() )
+        flatten_data.append( data_dic[key][1].flatten() )
 
     flatten_data = np.array(flatten_data)
     tensor_data = torch.tensor( flatten_data, device=device, dtype=torch.float32 )
