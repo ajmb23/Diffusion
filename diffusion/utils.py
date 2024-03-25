@@ -43,17 +43,16 @@ def find_highest_numbered_file(directory, file_extension):
 
     highest_num = max(int(re.findall(r'\d+', file)[0]) for file in numbered_files)
     highest_file = next((file for file in numbered_files if str(highest_num) in file), None)
-    return highest_file
+    return os.path.join(directory, highest_file)
 
 def load_checkpoint(dir_path, state, device, local_rank=None):
 
     # Check for existing checkpoint, if there is one it loads it
     checkpoint_file = find_highest_numbered_file(dir_path, '.pth')
 
-    if checkpoint_file is not None:
+    if os.path.isfile( checkpoint_file ):
 
-        checkpoint_file_path = os.path.join( dir_path, checkpoint_file )
-        loaded_state = torch.load(checkpoint_file_path, map_location=device)
+        loaded_state = torch.load(checkpoint_file, map_location=device)
         if local_rank is None:
             state['model'].load_state_dict(loaded_state['model'], strict=False)
         else:
@@ -71,9 +70,9 @@ def load_checkpoint(dir_path, state, device, local_rank=None):
         logging.warning(f"No checkpoint found at {dir_path}. Starting from scratch.")
         return state
 
-def load_arch_ema(dir_path, filename, init_arch, init_ema, device):
+def load_arch_ema(dir_path, init_arch, init_ema, device):
     #Loads only the architecture
-    checkpoint_file = os.path.join( dir_path, filename )
+    checkpoint_file = find_highest_numbered_file(dir_path, '.pth')
 
     if os.path.isfile( checkpoint_file ):
 
@@ -84,7 +83,7 @@ def load_arch_ema(dir_path, filename, init_arch, init_ema, device):
         return init_arch, init_ema 
         
     else:
-        ValueError( f"No checkpoint found in directory {dir_path} with name {filename}" )
+        ValueError( f"No checkpoint found in directory {dir_path}." )
 
 def restart_checkpoint(dir_path, filename, state, device, local_rank=None):
     last_checkpoint_file = os.path.join( dir_path, filename )

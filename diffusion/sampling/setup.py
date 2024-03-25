@@ -11,7 +11,7 @@ import torch
 import os 
 import time 
 
-def mod_ema_setup( device, dir_path, filename, arch_name, arch_params, ema_rate):
+def mod_ema_setup( device, dir_path, arch_name, arch_params, ema_rate):
     #Initialize architecture, ema
     call_model = create_model( arch_name)
     init_model = call_model( **arch_params )
@@ -19,7 +19,7 @@ def mod_ema_setup( device, dir_path, filename, arch_name, arch_params, ema_rate)
 
     init_ema = ExponentialMovingAverage(init_model.parameters(), decay=ema_rate)
 
-    score_model, ema = load_arch_ema( dir_path=dir_path, filename=filename, init_arch=init_model, 
+    score_model, ema = load_arch_ema( dir_path=dir_path, init_arch=init_model, 
                                       init_ema=init_ema, device=device )
     
     score_model.eval()
@@ -31,8 +31,7 @@ def sampling_batch( device, config, batch_size, *cond_img ):
     #Returns tensors of samples set on batch size
     
     checkpoint_dir = os.path.join( config['training']['work_dir'], "checkpoints/")
-    score_model, ema = mod_ema_setup(  device=device, dir_path=checkpoint_dir,
-                                       filename=config['sampling']['ckpt_filename'], 
+    score_model, ema = mod_ema_setup(  device=device, dir_path=checkpoint_dir, 
                                        arch_name=config['model']['name'],
                                        arch_params=config['model']['params'],
                                        ema_rate=config['model']['ema_rate'] )
