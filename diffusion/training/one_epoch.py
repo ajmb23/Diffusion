@@ -1,5 +1,5 @@
 import torch
-from diffusion.training import int_to_bits
+from diffusion.training.bit_diff import int_to_bits
 
 def one_epoch( device, dataloader, score_model, optimizer, ema, pert_mshift, 
                pert_std, min_t, max_t, grad_clip=0, cond_noise=0, bit=False ):
