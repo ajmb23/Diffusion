@@ -50,7 +50,7 @@ def load_checkpoint(dir_path, state, device, local_rank=None):
     # Check for existing checkpoint, if there is one it loads it
     checkpoint_file = find_highest_numbered_file(dir_path, '.pth')
 
-    if os.path.isfile( checkpoint_file ):
+    if checkpoint_file is not None:
 
         loaded_state = torch.load(checkpoint_file, map_location=device)
         if local_rank is None:
@@ -74,7 +74,7 @@ def load_arch_ema(dir_path, init_arch, init_ema, device):
     #Loads only the architecture
     checkpoint_file = find_highest_numbered_file(dir_path, '.pth')
 
-    if os.path.isfile( checkpoint_file ):
+    if checkpoint_file is not None:
 
         loaded_state = torch.load(checkpoint_file, map_location=device) 
         init_arch.load_state_dict(loaded_state['model'], strict=False)
