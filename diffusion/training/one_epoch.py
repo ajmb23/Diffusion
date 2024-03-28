@@ -27,8 +27,7 @@ def one_epoch( device, dataloader, score_model, optimizer, ema, pert_mshift,
             args[i] = tensor.to(device)
         
         if cond_noise>0:
-            cond_n = cond_noise * torch.randn_like(x)
-            args = [tensor + cond_n for tensor in args]
+            args = [tensor + cond_noise * torch.randn_like(tensor) for tensor in args]
         
         t = torch.empty( B ).uniform_( min_t , max_t ).to( device )
         mean_shift = pert_mshift(t).reshape(B, *[1]*len(D))
