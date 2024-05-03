@@ -106,7 +106,10 @@ def count_repeat(lst):
 
 def sample( config_file, idx_min, idx_max, sidx_min, sidx_max, cond_dic_file ):
     #Load conditional data
-    gpu_id = int(os.environ.get("SLURM_LOCALID"))
+    ngpus_per_node = torch.cuda.device_count()
+    local_rank = int(os.environ.get("SLURM_LOCALID"))
+    gpu_id = int(os.environ.get("SLURM_NODEID"))*ngpus_per_node + local_rank 
+
     time.sleep( 5*gpu_id )
     with open(cond_dic_file, 'rb') as file:
         cond_dic = pickle.load(file)
@@ -119,7 +122,7 @@ def sample( config_file, idx_min, idx_max, sidx_min, sidx_max, cond_dic_file ):
     #List of idx for each gpu
     total_samples = int( sidx_max - sidx_min +1 )
     n_gpu_per_idx = int( total_samples/batch_size )
-    n_gpu = int( torch.cuda.device_count() )
+    n_gpu = int(os.environ.get("SLURM_JOB_NUM_NODES")) * ngpus_per_node
     idx_list = idx_per_gpu(idx_min, idx_max, n_gpu_per_idx, n_gpu )[gpu_id]
     
     #List of total samples per idx per gpu

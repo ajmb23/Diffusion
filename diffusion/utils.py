@@ -16,6 +16,11 @@ def load_config( config_file ):
 
     return config
 
+def load_dic(filepath):
+    with open(filepath, 'rb') as file:
+        dic = pickle.load(file)
+    return dic
+
 def save_checkpoint(dir_path, filename, state, local_rank=None):
     saved_state = {
         'optimizer': state['optimizer'].state_dict(),
@@ -148,8 +153,7 @@ def sigma_max(dataset):
     return highest_distance
 
 def sigma_max_torch( data_dic_file, device ):
-    with open(data_dic_file, 'rb') as file:
-        data_dic = pickle.load(file)
+    data_dic = load_dic( data_dic_file )
     
     flatten_data = []
     for key in data_dic:
