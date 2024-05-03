@@ -26,7 +26,7 @@ def mod_ema_setup( device, dir_path, arch_name, arch_params, ema_rate):
 
     return score_model, ema
 
-def sampling_batch( device, config, batch_size, *cond_img ):
+def sampling_batch( device, config, batch_size, cond ):
     #Takes care of loading checkpoint, config parameters, and doing the sampling
     #Returns tensors of samples set on batch size
     
@@ -55,7 +55,7 @@ def sampling_batch( device, config, batch_size, *cond_img ):
                             config['sampling']['corr_step_type'], 
                             config['sampling']['corr_step_size'],
                             config['sampling']['corr_times'], 
-                            cond_img )
+                            cond )
 
     samples = init_sampler.sample( config['sampling']['tqdm_bool'] )
     np_samples = samples.detach().cpu().numpy()

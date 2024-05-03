@@ -8,7 +8,7 @@ class samplers():
                pred_num_steps, mean, std, first_t, last_t, 
                pert_std, drift_coeff, diffusion_coeff, device, 
                num_corr_steps=None, corr_step_type=None, 
-               corr_step_size=None, corr_times=None, *cond):
+               corr_step_size=None, corr_times=None, cond=None):
     
     self.score_model = score_model
     self.ema = ema
@@ -33,7 +33,7 @@ class samplers():
     
     self.cond = []
     if cond is not None:
-        self.cond = torch.tensor(*cond[0]).reshape(1, *dim).repeat(batch_size, *[1]*len(dim)).to(device)
+        self.cond = torch.tensor(cond).reshape(1, 1, *cond.shape).repeat(batch_size, *[1]*len(dim)).to(device)
   
   def setup(self):
 
