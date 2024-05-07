@@ -2,8 +2,6 @@ from diffusion.architectures import create_model, NCSNpp, DDPM, MLP, bb_MLP
 from diffusion.sampling.sampling_fn import samplers
 from diffusion import VE_zero, VE, VP, sub_VP, load_arch_ema, load_config
 from torch_ema import ExponentialMovingAverage
-from itertools import accumulate
-from tqdm import tqdm 
 import numpy as np 
 import logging
 import pickle
@@ -108,22 +106,22 @@ def sample( config_file, idx_min, idx_max, sidx_min, sidx_max, cond_dic_file ):
     #Load conditional data
     ngpus_per_node = torch.cuda.device_count()
     local_rank = int(os.environ.get("SLURM_LOCALID"))
-    gpu_id = int(os.environ.get("SLURM_NODEID"))*ngpus_per_node + local_rank 
+    rank = int(os.environ.get("SLURM_NODEID"))*ngpus_per_node + local_rank 
 
-    time.sleep( 5*gpu_id )
+    time.sleep( 2*rank )
     with open(cond_dic_file, 'rb') as file:
         cond_dic = pickle.load(file)
 
     #Load config file
     config = load_config( config_file )
-    device = torch.device("cuda", gpu_id)
+    device = torch.device("cuda", local_rank)
     batch_size = config['sampling']['batch_size']
 
     #List of idx for each gpu
     total_samples = int( sidx_max - sidx_min +1 )
     n_gpu_per_idx = int( total_samples/batch_size )
     n_gpu = int(os.environ.get("SLURM_JOB_NUM_NODES")) * ngpus_per_node
-    idx_list = idx_per_gpu(idx_min, idx_max, n_gpu_per_idx, n_gpu )[gpu_id]
+    idx_list = idx_per_gpu(idx_min, idx_max, n_gpu_per_idx, n_gpu )[rank]
     
     #List of total samples per idx per gpu
     factor = count_repeat(idx_list)
@@ -131,7 +129,7 @@ def sample( config_file, idx_min, idx_max, sidx_min, sidx_max, cond_dic_file ):
 
     #Check if sampling dictionnary exists or not
     os.makedirs( config['sampling']['sample_dir'], exist_ok=True )
-    dic_name = f"{idx_min}_{idx_max}_{sidx_min}_{sidx_max}_{gpu_id}.pkl"
+    dic_name = f"{idx_min}_{idx_max}_{sidx_min}_{sidx_max}_{rank}.pkl"
     sample_dic_file = os.path.join( config['sampling']['sample_dir'], dic_name )
 
     if os.path.isfile( sample_dic_file ) is False:
@@ -148,7 +146,7 @@ def sample( config_file, idx_min, idx_max, sidx_min, sidx_max, cond_dic_file ):
     #sample
     for track, sim_idx in enumerate(idx_list):
         
-        logging.info(f'GPU {gpu_id}: sim_idx {sim_idx}')
+        logging.info(f'GPU {rank}: sim_idx {sim_idx}')
         
         if sim_idx not in sample_dic:
             #If key doesn't exist create it
