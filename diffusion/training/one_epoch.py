@@ -2,7 +2,7 @@ import torch
 from diffusion.training.bit_diff import int_to_bits
 
 def one_epoch( device, dataloader, score_model, optimizer, ema, pert_mshift, 
-               pert_std, min_t, max_t, grad_clip=0, cond_noise=0, bit=False ):
+               pert_std, min_t, max_t, grad_clip=0, data_noise=0, cond_noise=0, bit=False ):
 
     data_iter = iter(dataloader)
     sum_loss_iter = torch.tensor([0.0], device=device)
@@ -26,6 +26,9 @@ def one_epoch( device, dataloader, score_model, optimizer, ema, pert_mshift,
         for i, tensor in enumerate(args):
             args[i] = tensor.to(device)
         
+        if data_noise>0:
+            x += data_noise * torch.randn_like(x)
+
         if cond_noise>0:
             args = [tensor + cond_noise * torch.randn_like(tensor) for tensor in args]
         

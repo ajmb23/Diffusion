@@ -102,15 +102,16 @@ def count_repeat(lst):
     
     return repeated_elements
 
-def sample( config_file, idx_min, idx_max, sidx_min, sidx_max, cond_dic_file ):
+def sample( config_file, idx_min, idx_max, sidx_min, sidx_max, cond_dic_file=None ):
     #Load conditional data
     ngpus_per_node = torch.cuda.device_count()
     local_rank = int(os.environ.get("SLURM_LOCALID"))
     rank = int(os.environ.get("SLURM_NODEID"))*ngpus_per_node + local_rank 
 
-    time.sleep( 2*rank )
-    with open(cond_dic_file, 'rb') as file:
-        cond_dic = pickle.load(file)
+    if cond_dic_file:
+        time.sleep( 2*rank )
+        with open(cond_dic_file, 'rb') as file:
+            cond_dic = pickle.load(file)
 
     #Load config file
     config = load_config( config_file )
@@ -150,23 +151,44 @@ def sample( config_file, idx_min, idx_max, sidx_min, sidx_max, cond_dic_file ):
         
         if sim_idx not in sample_dic:
             #If key doesn't exist create it
-            cosmo = cond_dic[sim_idx][0]
-            sample_dic[sim_idx] = [cosmo, None] 
-
-        if sample_dic[sim_idx][1] is None or sample_dic[sim_idx][1].shape[0]<tot_samp_per_gpu[track]: 
-            cond_data = cond_dic[sim_idx][1]
-            samples = sampling_batch( device, config, batch_size, cond_data )
-            
-            #Concatenate new samples with ones already in dictionary
-            if sample_dic[sim_idx][1] is None:
-                sample_dic[sim_idx][1] = samples
-            
+            if cond_dic_file:
+                cosmo = cond_dic[sim_idx][0]
+                sample_dic[sim_idx] = [cosmo, None] 
             else:
-                sample_dic[sim_idx][1] = np.append( sample_dic[sim_idx][1], samples, axis=0 )
+                sample_dic[sim_idx] = None
+
+        if cond_dic_file:
             
-            #Save progress
-            with open(sample_dic_file, 'wb') as file:
-                pickle.dump(sample_dic, file)  
+            if sample_dic[sim_idx][1] is None or sample_dic[sim_idx][1].shape[0]<tot_samp_per_gpu[track]: 
+                cond_data = cond_dic[sim_idx][1]
+                samples = sampling_batch( device, config, batch_size, cond_data )
+                
+                #Concatenate new samples with ones already in dictionary
+                if sample_dic[sim_idx][1] is None:
+                    sample_dic[sim_idx][1] = samples
+                
+                else:
+                    sample_dic[sim_idx][1] = np.append( sample_dic[sim_idx][1], samples, axis=0 )
+                
+                #Save progress
+                with open(sample_dic_file, 'wb') as file:
+                    pickle.dump(sample_dic, file)  
+        
+        else:
+            
+            if sample_dic[sim_idx] is None or sample_dic[sim_idx].shape[0]<tot_samp_per_gpu[track]: 
+                samples = sampling_batch( device, config, batch_size, cond=None )
+                
+                #Concatenate new samples with ones already in dictionary
+                if sample_dic[sim_idx] is None:
+                    sample_dic[sim_idx] = samples
+                
+                else:
+                    sample_dic[sim_idx] = np.append( sample_dic[sim_idx], samples, axis=0 )
+                
+                #Save progress
+                with open(sample_dic_file, 'wb') as file:
+                    pickle.dump(sample_dic, file)  
 
 def merge_dictionaries(in_dir, out_dir):
     merged_dict = {}

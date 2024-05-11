@@ -33,7 +33,7 @@ class samplers():
     
     self.cond = []
     if cond is not None:
-        self.cond = torch.tensor(cond).reshape(1, 1, *cond.shape).repeat(batch_size, *[1]*len(dim)).to(device)
+      self.cond = torch.tensor(cond).reshape(1, 1, *cond.shape).repeat(batch_size, *[1]*len(dim)).to(device)
   
   def setup(self):
 
@@ -44,11 +44,11 @@ class samplers():
     return time_steps[1:], dt, init_x
 
 
-  def EM_update(self, x, dt, time_step, *cond):
+  def EM_update(self, x, dt, time_step, cond):
     
     f = x*self.drift_coeff(time_step)
     g = self.diffusion_coeff( torch.ones_like(x)*time_step )
-    score = self.score_model( torch.ones([self.B], device=self.device)*time_step, x, *cond )/self.pert_std(time_step)
+    score = self.score_model( torch.ones([self.B], device=self.device)*time_step, x, cond )/self.pert_std(time_step)
     
     if time_step > self.last_t:
         x_mean = x + ( f - g**2 * score ) * dt
@@ -60,12 +60,12 @@ class samplers():
         return x_final
     
     
-  def langevin_update(self, x, time_step, step_size, step_type=None, *cond):
+  def langevin_update(self, x, time_step, step_size, step_type=None, cond=[]):
     if step_type=="pert_std":
       step_size = step_size * self.pert_std( time_step )    
 
     for _ in range(self.num_corr_steps):
-      score = self.score_model( torch.ones([self.B], device=self.device)*time_step, x, *cond )/self.pert_std(time_step)
+      score = self.score_model( torch.ones([self.B], device=self.device)*time_step, x, cond )/self.pert_std(time_step)
       x += step_size*score + (2*step_size)**0.5 * torch.randn_like(x)     
     return x    
 
