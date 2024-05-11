@@ -19,4 +19,3 @@ def int_to_bits(x, bits):
     bits = bits * 2 - 1
 
     return bits
-
