@@ -28,6 +28,7 @@ def single( config_folder, config_file ):
                                     min_t=min_t, 
                                     max_t=max_t, 
                                     grad_clip=config['optimizer']['grad_clip'], 
+                                    data_noise=config['data']['data_noise'],
                                     cond_noise=config['data']['cond_noise'],
                                     bit=config['data']['bit']
                                     )
