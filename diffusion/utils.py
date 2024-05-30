@@ -96,14 +96,21 @@ def sigma_max(dataset):
     highest_distance = np.max(pairwise_distances)
     return highest_distance
 
-def sigma_max_torch( data_dic_file, device ):
-    data_dic = load_dic( data_dic_file )
+def sigma_max_torch( data_file, device, dic=True ):
     
-    flatten_data = []
-    for key in data_dic:
-        flatten_data.append( data_dic[key][1].flatten() )
+    if dic:
+        data_dic = load_dic( data_file )
+        
+        flatten_data = []
+        for key in data_dic:
+            flatten_data.append( data_dic[key][1].flatten() )
 
-    flatten_data = np.array(flatten_data)
+        flatten_data = np.array(flatten_data)
+    
+    else:
+        data_array = np.load(data_file)
+        flatten_data = data_array.reshape(data_array.shape[0], -1)
+
     tensor_data = torch.tensor( flatten_data, device=device, dtype=torch.float32 )
 
     distance = torch.nn.functional.pdist(tensor_data, p=2)

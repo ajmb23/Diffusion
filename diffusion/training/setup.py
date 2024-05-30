@@ -66,11 +66,10 @@ def dataset_setup( config ):
 
 def training_setup( config, local_rank=None, rank=None, world_size=None): 
 
-    #Creates a file which gives infromation about the progress of training 
     logging.basicConfig( filename='training.txt', filemode='a', 
-                         format='%(levelname)s - %(asctime)s - %(message)s', 
-                         datefmt="%Y-%m-%d %H:%M:%S", level=logging.INFO )
-
+                        format='%(levelname)s - %(asctime)s - %(message)s', 
+                        datefmt="%Y-%m-%d %H:%M:%S", level=logging.INFO )
+    
     if local_rank is None:
         device = config['device']
         if device == 'cuda':
@@ -80,6 +79,7 @@ def training_setup( config, local_rank=None, rank=None, world_size=None):
         is_master = rank == 0
         device = torch.device("cuda", local_rank)
         logging.info(f"World size: {world_size}, global rank: {rank}, local rank: {local_rank}")
+        torch.distributed.barrier()
 
     #Initialize architecture, ema, optimizer
     init_model, init_ema, init_optimizer = mod_ema_opt_setup( device=device, arch_name=config['model']['name'], 
@@ -109,7 +109,9 @@ def training_setup( config, local_rank=None, rank=None, world_size=None):
         logging.info( f"SDE:{config['SDE']['name']}, noise_min:{config['SDE']['noise_min']}, "
                     f"noise_max:{config['SDE']['noise_max']}, "
                     f"min_t:{min_t:.0e}, max_t:{max_t}" )
-    
+
+    if local_rank is not None:
+        torch.distributed.barrier()
     state = load_checkpoint( checkpoint_dir, init_state, device, local_rank )
 
     #Load data and dataloader, distribute dataloader if parallel
@@ -124,24 +126,16 @@ def training_setup( config, local_rank=None, rank=None, world_size=None):
                                  sampler=DistributedSampler(dataset=data_sets, 
                                                             shuffle=config['training']['shuffle']) )        
 
-    if local_rank is not None:
-        torch.distributed.barrier()
-
     return device, state, checkpoint_dir, dataloader, pert_mshift, pert_std, min_t, max_t 
 
 
 def save_track_progress( config, state, epoch, sum_loss_iter, counter, checkpoint_dir, local_rank=None, is_master=None ):
     if epoch % config['training']['save_ckpt_rate'] == 0 or epoch == 1:
 
-        if local_rank is not None and not is_master:
-            torch.distributed.barrier()
-
         if local_rank is None or is_master:  
             avg_loss = sum_loss_iter/counter
             logging.info(f"epoch: {epoch}, training loss: {avg_loss.item():.2f}")
             save_checkpoint( checkpoint_dir, f'checkpoint_{epoch}.pth', state, local_rank )
-
-        if local_rank is not None and is_master:
-            torch.distributed.barrier()
+        torch.distributed.barrier()
 
     state['epoch'] += 1

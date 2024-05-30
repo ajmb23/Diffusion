@@ -10,7 +10,7 @@ def one_epoch( device, dataloader, score_model, optimizer, ema, pert_mshift,
 
     for i in range( len(dataloader) ):
 
-        X = next(data_iter)
+        X = next(data_iter)       
         if isinstance(X, list):
             x, *args = X
         else:
@@ -21,7 +21,6 @@ def one_epoch( device, dataloader, score_model, optimizer, ema, pert_mshift,
             x = int_to_bits(x=x, bits=bit )
 
         B, *D = x.shape
-
         x = x.to(device)
         for i, tensor in enumerate(args):
             args[i] = tensor.to(device)

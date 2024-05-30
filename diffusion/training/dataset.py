@@ -13,15 +13,16 @@ def open_data( data_dir, filename, mlp=False ):
         if integer_found != '':
             indices = [i for i, (_, label) in enumerate(all_mnist) if label == int(integer_found)]
             dataset = [all_mnist[i][0] for i in indices] 
-       
-        else:    
-            dataset = all_mnist.data
+            dataset = torch.stack(dataset, dim=0)
+
+        else:
+            dataset = torch.stack([image for image, _ in all_mnist], dim=0)    
 
     if filename.endswith(".npy"):
         np_data = np.load( f'{data_dir}/{filename}' )
         dataset = torch.from_numpy( np_data )
-        if mlp==False:
-            dataset = torch.unsqueeze( dataset, dim=1 )
+        #if mlp==False:
+        #    dataset = torch.unsqueeze( dataset, dim=1 )
 
     return dataset
 

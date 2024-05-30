@@ -44,11 +44,12 @@ def mult( config_folder, config_file ):
     config = load_config( config_path )
     
     local_rank, rank, world_size = mult_gpu_setup()
-
+    
     device, state, checkpoint_dir, dataloader, \
     pert_mshift, pert_std, min_t, max_t = training_setup( config, local_rank=local_rank, 
                                                           rank=rank, world_size=world_size )
-
+    
+    torch.distributed.barrier()
     for epoch in range ( state['epoch'] , config['training']['num_epochs']+1 ):
 
         sum_loss_iter, counter = one_epoch(
