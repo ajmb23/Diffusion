@@ -136,6 +136,8 @@ def save_track_progress( config, state, epoch, sum_loss_iter, counter, checkpoin
             avg_loss = sum_loss_iter/counter
             logging.info(f"epoch: {epoch}, training loss: {avg_loss.item():.2f}")
             save_checkpoint( checkpoint_dir, f'checkpoint_{epoch}.pth', state, local_rank )
-        torch.distributed.barrier()
+        
+        if local_rank is not None:
+            torch.distributed.barrier()
 
     state['epoch'] += 1
